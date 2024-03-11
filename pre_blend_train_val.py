@@ -136,6 +136,21 @@ def fuse_images(images, method='repeat_first'):
     
         # Stacking the blended channels to create the RGB image
         return np.stack([images[0], images[1], blended_mri], axis=-1)
+    elif method == 'fuse_all_channels':
+        # Determine the maximum number of channels among the input images
+        #max_channels = max(image.shape[-1] for image in images)
+        max_channels = len(images)
+        # Create an empty array to store the fused image
+        #fused_image = np.zeros((*images[0].shape[:-1], max_channels))
+        fused_image = np.zeros((images[0].shape, max_channels))
+        # Iterate over each channel and assign the corresponding image
+        for i in range(max_channels):
+            if i < len(images):
+                fused_image[..., i] = images[i]
+            else:
+                # If there are fewer images than channels, repeat the last image
+                fused_image[..., i] = images[-1]
+                return fused_image
     else:
         raise ValueError("Unsupported fusion method.")
 

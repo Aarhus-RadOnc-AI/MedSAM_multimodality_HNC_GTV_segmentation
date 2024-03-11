@@ -142,14 +142,18 @@ class NpyDataset(Dataset):
     def __getitem__(self, index):
         img_name = basename(self.gt_path_files[index])
         assert img_name == basename(self.gt_path_files[index]), 'img gt name error' + self.gt_path_files[index] + self.npy_files[index]
-        img_3c = np.load(join(self.img_path, img_name), 'r', allow_pickle=True) # (H, W, 3)
+
+        img = np.load(join(self.img_path, img_name), 'r', allow_pickle=True)  # (H, W, C)
+
         # Resizing and normalization
-        img_resize = self.resize_longest_side(img_3c)
-        img_resize = (img_resize - img_resize.min()) / np.clip(img_resize.max() - img_resize.min(), a_min=1e-8, a_max=None) # normalize to [0, 1], (H, W, 3
-        img_padded = self.pad_image(img_resize) # (256, 256, 3)
-        # convert the shape to (3, H, W)
-        img_padded = np.transpose(img_padded, (2, 0, 1)) # (3, 256, 256)
-        assert np.max(img_padded)<=1.0 and np.min(img_padded)>=0.0, 'image should be normalized to [0, 1]'
+        img_resize = self.resize_longest_side(img)
+        img_resize = (img_resize - img_resize.min()) / np.clip(img_resize.max() - img_resize.min(), a_min=1e-8, a_max=None)  # normalize to [0, 1], (H, W, C)
+        img_padded = self.pad_image(img_resize)  # (256, 256, C)
+
+        # convert the shape to (C, H, W)
+        img_padded = np.transpose(img_padded, (2, 0, 1))  # (C, 256, 256)
+        assert np.max(img_padded) <= 1.0 and np.min(img_padded) >= 0.0, 'image should be normalized to [0, 1]'
+
         gt = np.load(self.gt_path_files[index], 'r', allow_pickle=True) # multiple labels [0, 1,4,5...], (256,256)
         assert gt.max() >= 1, 'gt should have at least one label'
         gt = cv2.resize(
@@ -277,34 +281,36 @@ def sanity_check_dataset(args):
         break
 
 # %%
-class MedSAM_Lite(nn.Module):
-    def __init__(self, 
-                image_encoder, 
-                mask_decoder,
-                prompt_encoder
-        ):
+class MedSAM_Lite_Midfuse(nn.Module):
+    def __init__(self,
+                 image_encoders,
+                 mask_decoder,
+                 prompt_encoder
+                 ):
         super().__init__()
-        self.image_encoder = image_encoder
+        self.image_encoders = nn.ModuleList(image_encoders)
         self.mask_decoder = mask_decoder
         self.prompt_encoder = prompt_encoder
-
-    def forward(self, image, boxes):
-        image_embedding = self.image_encoder(image) # (B, 256, 64, 64)
-
+    def forward(self, images, boxes):
+        image_embeddings = []
+        for i, image in enumerate(images):
+            image_embedding = self.image_encoders[i](image)  # (B, 256, 64, 64)
+            image_embeddings.append(image_embedding)
+        fused_image_embedding = torch.stack(image_embeddings, dim=1).mean(dim=1)  # (B, 256, 64, 64)
         sparse_embeddings, dense_embeddings = self.prompt_encoder(
             points=None,
             boxes=boxes,
             masks=None,
         )
         low_res_logits, iou_predictions = self.mask_decoder(
-            image_embeddings=image_embedding, # (B, 256, 64, 64)
-            image_pe=self.prompt_encoder.get_dense_pe(), # (1, 256, 64, 64)
-            sparse_prompt_embeddings=sparse_embeddings, # (B, 2, 256)
-            dense_prompt_embeddings=dense_embeddings, # (B, 256, 64, 64)
+            image_embeddings=fused_image_embedding,  # (B, 256, 64, 64)
+            image_pe=self.prompt_encoder.get_dense_pe(),  # (1, 256, 64, 64)
+            sparse_prompt_embeddings=sparse_embeddings,  # (B, 2, 256)
+            dense_prompt_embeddings=dense_embeddings,  # (B, 256, 64, 64)
             multimask_output=False,
-          ) # (B, 1, 256, 256)
-
+        )  # (B, 1, 256, 256)
         return low_res_logits, iou_predictions
+    
 
     @torch.no_grad()
     def postprocess_masks(self, masks, new_size, original_size):
@@ -392,7 +398,7 @@ def main_worker(gpu, ngpus_per_node, args):
             iou_head_hidden_dim=256,
     )
     
-    medsam_lite_model = MedSAM_Lite(
+    medsam_lite_model = MedSAM_Lite_Midfuse(
         image_encoder = medsam_lite_image_encoder,
         mask_decoder = medsam_lite_mask_decoder,
         prompt_encoder = medsam_lite_prompt_encoder
