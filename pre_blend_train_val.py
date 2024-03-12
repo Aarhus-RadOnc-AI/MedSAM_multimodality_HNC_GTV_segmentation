@@ -258,7 +258,7 @@ def preprocess(name, npy_path):
         
         img_list = [preprocess_img(reader.get_image_data(modality),modality) for modality in reader.modalities]
 
-        fused_image = fuse_images(img_list, method = 'mri_weight_blending_b')
+        fused_image = fuse_images(img_list, method = 'fuse_all_channels') #fuse_all_channels , 'mri_weight_blending_b'
         #print(fused_image.shape)
         
         fused_image = np.uint8(fused_image)

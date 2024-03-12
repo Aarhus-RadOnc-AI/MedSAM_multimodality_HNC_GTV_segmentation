@@ -281,6 +281,52 @@ def sanity_check_dataset(args):
         break
 
 # %%
+class MedSAM_Lite(nn.Module):
+    def __init__(self, 
+                image_encoder, 
+                mask_decoder,
+                prompt_encoder
+        ):
+        super().__init__()
+        self.image_encoder = image_encoder
+        self.mask_decoder = mask_decoder
+        self.prompt_encoder = prompt_encoder
+
+    def forward(self, image, boxes):
+        image_embedding = self.image_encoder(image) # (B, 256, 64, 64)
+
+        sparse_embeddings, dense_embeddings = self.prompt_encoder(
+            points=None,
+            boxes=boxes,
+            masks=None,
+        )
+        low_res_logits, iou_predictions = self.mask_decoder(
+            image_embeddings=image_embedding, # (B, 256, 64, 64)
+            image_pe=self.prompt_encoder.get_dense_pe(), # (1, 256, 64, 64)
+            sparse_prompt_embeddings=sparse_embeddings, # (B, 2, 256)
+            dense_prompt_embeddings=dense_embeddings, # (B, 256, 64, 64)
+            multimask_output=False,
+        ) # (B, 1, 256, 256)
+
+        return low_res_logits, iou_predictions
+
+    @torch.no_grad()
+    def postprocess_masks(self, masks, new_size, original_size):
+        """
+        Do cropping and resizing
+        """
+        # Crop
+        masks = masks[:, :, :new_size[0], :new_size[1]]
+        # Resize
+        masks = F.interpolate(
+            masks,
+            size=(original_size[0], original_size[1]),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        return masks
+#updated MedSAM model with capability to fuse embeddings at middle 
 class MedSAM_Lite_Midfuse(nn.Module):
     def __init__(self,
                  image_encoders,
@@ -328,7 +374,7 @@ class MedSAM_Lite_Midfuse(nn.Module):
         )
 
         return masks
-
+    
 def main(args):
     ngpus_per_node = torch.cuda.device_count()
     print("Spwaning processces")
@@ -397,20 +443,38 @@ def main_worker(gpu, ngpus_per_node, args):
             iou_head_depth=3,
             iou_head_hidden_dim=256,
     )
-    
-    medsam_lite_model = MedSAM_Lite_Midfuse(
+    medsam_lite_model = MedSAM_Lite(
+        image_encoder = medsam_lite_image_encoder,
+        mask_decoder = medsam_lite_mask_decoder,
+        prompt_encoder = medsam_lite_prompt_encoder
+    )
+        
+    medsam_lite_model_mid_fuse = MedSAM_Lite_Midfuse(
         image_encoder = medsam_lite_image_encoder,
         mask_decoder = medsam_lite_mask_decoder,
         prompt_encoder = medsam_lite_prompt_encoder
     )
     
+    # updated to load encoder weights multiple times. 
     if (not os.path.exists(args.resume)) and isfile(args.pretrained_checkpoint):
-        ## Load pretrained checkpoint if there's no checkpoint to resume from and there's a pretrained checkpoint
         print(f"Loading pretrained checkpoint from {args.pretrained_checkpoint}")
+        #Load the pretrained checkpoint of the original MedSAM model:
         medsam_lite_checkpoint = torch.load(args.pretrained_checkpoint, map_location="cpu")
-        medsam_lite_model.load_state_dict(medsam_lite_checkpoint, strict=True)
+        medsam_lite_state_dict = medsam_lite_checkpoint["model_state_dict"]
+        
+        medsam_lite_mid_fuse_state_dict = {}
+        for key, value in medsam_lite_state_dict.items():
+            if key.startswith("image_encoder."):
+                for i in range(len(medsam_lite_model_mid_fuse.image_encoders)):
+                    medsam_lite_mid_fuse_state_dict[f"image_encoders.{i}.{key[14:]}"] = value
+            else:
+                medsam_lite_mid_fuse_state_dict[key] = value
+        
+        medsam_lite_model_mid_fuse.load_state_dict(medsam_lite_mid_fuse_state_dict, strict=False)
 
-    medsam_lite_model = medsam_lite_model.to(device)
+        medsam_lite_model_mid_fuse = medsam_lite_model_mid_fuse.to(device)
+
+
 
     ## Make sure there's only 2d BN layers, so that I can revert them properly
     for module in medsam_lite_model.modules():
