@@ -443,11 +443,11 @@ def main_worker(gpu, ngpus_per_node, args):
             iou_head_depth=3,
             iou_head_hidden_dim=256,
     )
-    medsam_lite_model = MedSAM_Lite(
-        image_encoder = medsam_lite_image_encoder,
-        mask_decoder = medsam_lite_mask_decoder,
-        prompt_encoder = medsam_lite_prompt_encoder
-    )
+    # medsam_lite_model = MedSAM_Lite(
+    #     image_encoder = medsam_lite_image_encoder,
+    #     mask_decoder = medsam_lite_mask_decoder,
+    #     prompt_encoder = medsam_lite_prompt_encoder
+    # )
         
     medsam_lite_model_mid_fuse = MedSAM_Lite_Midfuse(
         image_encoder = medsam_lite_image_encoder,
@@ -477,25 +477,25 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
     ## Make sure there's only 2d BN layers, so that I can revert them properly
-    for module in medsam_lite_model.modules():
+    for module in medsam_lite_model_mid_fuse.modules():
         cls_name = module.__class__.__name__
         if "BatchNorm" in cls_name:
             assert cls_name == "BatchNorm2d" 
-    medsam_lite_model = nn.SyncBatchNorm.convert_sync_batchnorm(medsam_lite_model)
+    medsam_lite_model_mid_fuse = nn.SyncBatchNorm.convert_sync_batchnorm(medsam_lite_model_mid_fuse)
 
-    medsam_lite_model = nn.parallel.DistributedDataParallel(
-        medsam_lite_model,
+    medsam_lite_model_mid_fuse = nn.parallel.DistributedDataParallel(
+        medsam_lite_model_mid_fuse,
         device_ids=[gpu],
         output_device=gpu,
         find_unused_parameters=True,
         bucket_cap_mb=args.bucket_cap_mb
     )
-    medsam_lite_model.train()
+    medsam_lite_model_mid_fuse.train()
     # %%
-    print(f"MedSAM Lite size: {sum(p.numel() for p in medsam_lite_model.parameters())}")
+    print(f"MedSAM Lite size: {sum(p.numel() for p in medsam_lite_model_mid_fuse.parameters())}")
     # %%
     optimizer = optim.AdamW(
-        medsam_lite_model.parameters(),
+        medsam_lite_model_mid_fuse.parameters(),
         lr=args.lr,
         betas=(0.9, 0.999),
         eps=1e-08,
@@ -555,7 +555,7 @@ def main_worker(gpu, ngpus_per_node, args):
         latest_ckpt = join(args.work_dir, args.task_name + '-' + latest_date.strftime('%Y%m%d-%H%M'), 'medsam_lite_latest.pth')
         print('Loading from', latest_ckpt)
         checkpoint = torch.load(latest_ckpt, map_location=device)
-        medsam_lite_model.module.load_state_dict(checkpoint["model"])
+        medsam_lite_model_mid_fuse.module.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epoch"] + 1
         best_loss = checkpoint["loss"]
@@ -578,7 +578,7 @@ def main_worker(gpu, ngpus_per_node, args):
             boxes = batch["bboxes"]
             optimizer.zero_grad()
             image, gt2D, boxes = image.to(device), gt2D.to(device), boxes.to(device)
-            logits_pred, iou_pred = medsam_lite_model(image, boxes)
+            logits_pred, iou_pred = medsam_lite_model_mid_fuse(image, boxes)
             l_seg = seg_loss(logits_pred, gt2D)
             l_ce = ce_loss(logits_pred, gt2D.float())
             mask_loss = l_seg + l_ce
@@ -612,7 +612,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 gt2D = batch["gt2D"]
                 boxes = batch["bboxes"]
                 image, gt2D, boxes = image.to(device), gt2D.to(device), boxes.to(device)
-                logits_pred, iou_pred = medsam_lite_model(image, boxes)
+                logits_pred, iou_pred = medsam_lite_model_mid_fuse(image, boxes)
                 l_seg = seg_loss(logits_pred, gt2D)
                 #l_ce = ce_loss(logits_pred, gt2D.float())
                 #mask_loss = l_seg + l_ce
@@ -629,7 +629,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #dist.barrier()
         
         if is_main_host:
-            module_revert_sync_BN = revert_sync_batchnorm(deepcopy(medsam_lite_model.module))
+            module_revert_sync_BN = revert_sync_batchnorm(deepcopy(medsam_lite_model_mid_fuse.module))
             weights = module_revert_sync_BN.state_dict()
             checkpoint = {
                 "model": weights,
