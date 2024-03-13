@@ -195,7 +195,7 @@ class NpyDataset(Dataset):
             "bboxes": torch.tensor(bboxes[None, None, ...]).float(), # (B, 1, 4)
             "image_name": img_name,
             "new_size": torch.tensor(np.array([img_resize.shape[0], img_resize.shape[1]])).long(),
-            "original_size": torch.tensor(np.array([img_3c.shape[0], img_3c.shape[1]])).long()
+            "original_size": torch.tensor(np.array([img.shape[0], img.shape[1]])).long()
         }
 
     def resize_longest_side(self, image):
