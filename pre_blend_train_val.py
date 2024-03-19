@@ -20,17 +20,17 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-modality_suffix_dict", type=dict, default={'CT': '_0000.nii.gz', 'PET': '_0001.nii.gz', 'T1': '_0002.nii.gz', 'T2': '_0003.nii.gz'}, 
                     help="CT or MR, [default: CT]")
-parser.add_argument("-anatomy", type=str, default="HNC_blend",
+parser.add_argument("-anatomy", type=str, default="HNC_midfuse",
                     help="Anaotmy name, [default: Abd]")
 parser.add_argument("-img_name_suffix", type=str, default="_0000.nii.gz",
                     help="Suffix of the image name, [default: _0000.nii.gz]")
 parser.add_argument("-gt_name_suffix", type=str, default=".nii.gz",
                     help="Suffix of the ground truth name, [default: .nii.gz]")
-parser.add_argument("-img_path", type=str, default="/mnt/data/jintao/nnUNet/nnUNet_raw_data_base/nnUNet_raw_data/Task901_AUH/imagesTr/",
+parser.add_argument("-img_path", type=str, default="/data/jintao/nnUNet/nnUNet_raw_data_base/nnUNet_raw_data/Task901_AUH/imagesTr/",
                     help="Path to the nii images, [default: data/FLARE22Train/images]")
-parser.add_argument("-gt_path", type=str, default="/mnt/data/jintao/nnUNet/nnUNet_raw_data_base/nnUNet_raw_data/Task901_AUH/labelsTr",
+parser.add_argument("-gt_path", type=str, default="/data/jintao/nnUNet/nnUNet_raw_data_base/nnUNet_raw_data/Task901_AUH/labelsTr",
                     help="Path to the ground truth, [default: data/FLARE22Train/labels]")
-parser.add_argument("-output_path", type=str, default="/processing/jintao/medsam_hnc/npy",
+parser.add_argument("-output_path", type=str, default="/mnt/processing/jintao/medsam_hnc/npy",
                     help="Path to save the npy files, [default: ./data/npy]")
 parser.add_argument("-num_workers", type=int, default=4,
                     help="Number of workers, [default: 4]")
@@ -142,7 +142,7 @@ def fuse_images(images, method='repeat_first'):
         max_channels = len(images)
         # Create an empty array to store the fused image
         #fused_image = np.zeros((*images[0].shape[:-1], max_channels))
-        fused_image = np.zeros((images[0].shape, max_channels))
+        fused_image = np.zeros((*images[0].shape, max_channels))
         # Iterate over each channel and assign the corresponding image
         for i in range(max_channels):
             if i < len(images):
@@ -176,6 +176,7 @@ def preprocess(name, npy_path):
     
     makedirs(join(npy_path, "imgs"), exist_ok=True)
     makedirs(join(npy_path, "gts"), exist_ok=True)
+
     # remove label ids
     for remove_label_id in remove_label_ids:
         gt_data_ori[gt_data_ori == remove_label_id] = 0
