@@ -41,7 +41,7 @@ CUDA_VISIBLE_DEVICES=2,3 python train_midfuse_multi_gpus_with_val.py \
     -pretrained_checkpoint ${pretrained_checkpoint} \
     -work_dir ./work_dir/LiteMedSAM \
     -num_epochs 30 \
-    -batch_size 8 \
+    -batch_size 4 \
     -num_workers 4 \
     -lr 0.0003 \
     --data_aug \
