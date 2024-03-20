@@ -223,8 +223,6 @@ class NchannelNpyDataset(Dataset):
         
         # Process each of the 4 channels separately and repeat them to form 3-channel images
         img_processed_list = []
-        random_value = random.random()
-        
         for c in range(img_4c.shape[2]):
             single_channel_img = img_4c[:, :, c]
 
@@ -254,11 +252,11 @@ class NchannelNpyDataset(Dataset):
             
             # add data augmentation: random fliplr and random flipud
             if self.data_aug:
-                if random_value > 0.5:
+                if random.random() > 0.5:
                     img_padded = np.ascontiguousarray(np.flip(img_padded, axis=-1))
                     gt2D = np.ascontiguousarray(np.flip(gt2D, axis=-1))
                     # print('DA with flip left right')
-                if random_value > 0.5:
+                if random.random() > 0.5:
                     img_padded = np.ascontiguousarray(np.flip(img_padded, axis=-2))
                     gt2D = np.ascontiguousarray(np.flip(gt2D, axis=-2))
                     # print('DA with flip upside down')
@@ -352,10 +350,12 @@ def sanity_check_dataset(args):
         gt = batch["gt2D"]
         bboxes = batch["bboxes"]
         names_temp = batch["image_name"]
-
+        print("images<<<<<<<",images.shape)
+        print("gt<<<<<<<",gt.shape)
+        
         for i in range(images.shape[-1]):
             image = images[..., i]
-           # print("image>>>>>>",image.shape)
+            print("image>>>>>>",image.shape)
             
             axs[0].imshow(image[idx].cpu().permute(1,2,0).numpy())
             show_mask(gt[idx].cpu().squeeze().numpy(), axs[0])
