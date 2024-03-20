@@ -452,17 +452,8 @@ class MedSAM_Lite_Midfuse(nn.Module):
         image_embedding = image_embedding.view(B, N, -1, image_embedding.size(-2), image_embedding.size(-1))  # (B, N, 256, 64, 64)
 
         # Fuse the embeddings along the modality dimension
-        fused_image_embedding = image_embedding.mean(dim=1)  # (B, 256, 64, 64)
-            
-        # image_embeddings = []
-        # # fuse embeddings from multiple encoders
-        # for i in range(images.size()[-1]):
-        #     image = images[...,i]
-        #     image_embedding = self.image_encoder(image)  # (B, 256, 64, 64)
-        #     image_embeddings.append(image_embedding)
-        # fused_image_embedding = torch.stack(image_embeddings, dim=1).mean(dim=1)  # (B, 256, 64, 64)
-        
-        
+        fused_image_embedding = image_embedding.mean(dim=1)  
+
         sparse_embeddings, dense_embeddings = self.prompt_encoder(
             points=None,
             boxes=boxes,
