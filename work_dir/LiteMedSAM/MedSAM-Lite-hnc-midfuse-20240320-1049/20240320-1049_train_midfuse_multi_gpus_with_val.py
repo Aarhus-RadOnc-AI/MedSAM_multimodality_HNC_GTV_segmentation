@@ -143,10 +143,10 @@ class NpyDataset(Dataset):
         img_name = basename(self.gt_path_files[index])
         assert img_name == basename(self.gt_path_files[index]), 'img gt name error' + self.gt_path_files[index] + self.npy_files[index]
 
-        img_3c = np.load(join(self.img_path, img_name), 'r', allow_pickle=True)  # (H, W, C)
+        img = np.load(join(self.img_path, img_name), 'r', allow_pickle=True)  # (H, W, C)
 
         # Resizing and normalization
-        img_resize = self.resize_longest_side(img_3c)
+        img_resize = self.resize_longest_side(img)
         img_resize = (img_resize - img_resize.min()) / np.clip(img_resize.max() - img_resize.min(), a_min=1e-8, a_max=None)  # normalize to [0, 1], (H, W, C)
         img_padded = self.pad_image(img_resize)  # (256, 256, C)
 
@@ -197,97 +197,7 @@ class NpyDataset(Dataset):
             "new_size": torch.tensor(np.array([img_resize.shape[0], img_resize.shape[1]])).long(),
             "original_size": torch.tensor(np.array([img.shape[0], img.shape[1]])).long()
         }
-class NchannelNpyDataset(Dataset): 
-    def __init__(self, data_root, image_size=256, bbox_shift=10, data_aug=True):
-        self.data_root = data_root
-        self.gt_path = join(data_root, 'gts')
-        self.img_path = join(data_root, 'imgs')
-        self.gt_path_files = sorted(glob(join(self.gt_path, '*.npy'), recursive=True))
-        self.gt_path_files = [file for file in self.gt_path_files if isfile(join(self.img_path, basename(file)))]
-        self.image_size = image_size
-        self.target_length = image_size
-        self.bbox_shift = bbox_shift
-        self.data_aug = data_aug
-    
-    def __len__(self):
-        return len(self.gt_path_files)
 
-    def __getitem__(self, index):
-        img_name = basename(self.gt_path_files[index])
-        assert img_name == basename(self.gt_path_files[index]), 'img gt name error' + self.gt_path_files[index] + self.npy_files[index]
-
-        # Load image, assumed shape (H, W, C) with C=4
-        img_4c = np.load(join(self.img_path, img_name), allow_pickle=True)
-        # Load and process GT as in your original code
-        gt = np.load(self.gt_path_files[index], allow_pickle=True)
-        
-        # Process each of the 4 channels separately and repeat them to form 3-channel images
-        img_processed_list = []
-        for c in range(img_4c.shape[2]):
-            single_channel_img = img_4c[:, :, c]
-
-            # Repeat the single channel to form a 3-channel image
-            img_3c = np.repeat(single_channel_img[:, :, np.newaxis], 3, axis=2)
-
-            # Your existing preprocessing (resizing, normalization, padding)
-            img_resize = self.resize_longest_side(img_3c)  # Adjust your method to handle 3-channel input
-            img_normalize = (img_resize - img_resize.min()) / np.clip(img_resize.max() - img_resize.min(), a_min=1e-8, a_max=None)
-            
-            #processing groud truth label using the first image preprocess
-            if c == 0:
-                gt = cv2.resize(gt, (img_normalize.shape[1], img_normalize.shape[0]), interpolation=cv2.INTER_NEAREST).astype(np.uint8)
-                gt = self.pad_image(gt)
-                label_ids = np.unique(gt)[1:]
-                try:
-                    gt2D = np.uint8(gt == random.choice(label_ids.tolist()))
-                except:
-                    print(img_name, 'label_ids.tolist()', label_ids.tolist())
-                    gt2D = np.uint8(gt == np.max(gt))
-            
-            # pad image
-            img_padded = self.pad_image(img_normalize)
-            # Convert shape to (3, H, W) 
-            img_padded = np.transpose(img_padded, (2, 0, 1))
-            assert np.max(img_padded) <= 1.0 and np.min(img_padded) >= 0.0, 'image should be normalized to [0, 1]'
-            
-            # add data augmentation: random fliplr and random flipud
-            if self.data_aug:
-                if random.random() > 0.5:
-                    img_padded = np.ascontiguousarray(np.flip(img_padded, axis=-1))
-                    gt2D = np.ascontiguousarray(np.flip(gt2D, axis=-1))
-                    # print('DA with flip left right')
-                if random.random() > 0.5:
-                    img_padded = np.ascontiguousarray(np.flip(img_padded, axis=-2))
-                    gt2D = np.ascontiguousarray(np.flip(gt2D, axis=-2))
-                    # print('DA with flip upside down')
-
-            # and append to list
-            img_processed_list.append(img_padded)
-            
-        # Combine processed images into a single tensor with dimensions (3, H, W, N)
-        img_tensor = torch.tensor(np.array(img_processed_list)).float()  
-
-        # make bbox based on ground truth 
-        gt2D = np.uint8(gt2D > 0)
-        y_indices, x_indices = np.where(gt2D > 0)
-        x_min, x_max = np.min(x_indices), np.max(x_indices)
-        y_min, y_max = np.min(y_indices), np.max(y_indices)
-        # add perturbation to bounding box coordinates
-        H, W = gt2D.shape
-        x_min = max(0, x_min - random.randint(0, self.bbox_shift))
-        x_max = min(W, x_max + random.randint(0, self.bbox_shift))
-        y_min = max(0, y_min - random.randint(0, self.bbox_shift))
-        y_max = min(H, y_max + random.randint(0, self.bbox_shift))
-        bboxes = np.array([x_min, y_min, x_max, y_max])
-        
-        return {
-            "image": img_tensor,
-            "gt2D": torch.tensor(gt2D[None, :,:]).long(),
-            "bboxes": torch.tensor(bboxes[None, None, ...]).float(), # (B, 1, 4)
-            "image_name": img_name,
-            "new_size": torch.tensor(np.array([img_resize.shape[0], img_resize.shape[1]])).long(),
-            "original_size": torch.tensor(np.array([img_3c.shape[0], img_3c.shape[1]])).long()
-        }
     def resize_longest_side(self, image):
         """
         Expects a numpy array with shape HxWxC in uint8 format.
@@ -332,7 +242,7 @@ def collate_fn(batch):
 #%% sanity test of dataset class
 def sanity_check_dataset(args):
     print('tr_npy_path', args.tr_npy_path)
-    tr_dataset = NchannelNpyDataset(args.tr_npy_path, data_aug=args.data_aug)
+    tr_dataset = NpyDataset(args.tr_npy_path, data_aug=args.data_aug)
     print('len(tr_dataset)', len(tr_dataset))
     tr_dataloader = DataLoader(tr_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
     makedirs(args.work_dir, exist_ok=True)
@@ -431,7 +341,6 @@ class MedSAM_Lite_Midfuse(nn.Module):
         image_embeddings = []
         # fuse embeddings from multiple encoders
         for i, image in enumerate(images):
-            print(image.size())
             image_embedding = self.image_encoder(image)  # (B, 256, 64, 64)
             image_embeddings.append(image_embedding)
         fused_image_embedding = torch.stack(image_embeddings, dim=1).mean(dim=1)  # (B, 256, 64, 64)
@@ -546,32 +455,25 @@ def main_worker(gpu, ngpus_per_node, args):
         mask_decoder = medsam_lite_mask_decoder,
         prompt_encoder = medsam_lite_prompt_encoder
     )
+    
+    # updated to load encoder weights multiple times. 
     if (not os.path.exists(args.resume)) and isfile(args.pretrained_checkpoint):
-        ## Load pretrained checkpoint if there's no checkpoint to resume from and there's a pretrained checkpoint
         print(f"Loading pretrained checkpoint from {args.pretrained_checkpoint}")
+        #Load the pretrained checkpoint of the original MedSAM model:
         medsam_lite_checkpoint = torch.load(args.pretrained_checkpoint, map_location="cpu")
-        medsam_lite_model_mid_fuse.load_state_dict(medsam_lite_checkpoint, strict=True)
-
-    medsam_lite_model_mid_fuse = medsam_lite_model_mid_fuse.to(device)
-
-    # # updated to load encoder weights multiple times. 
-    # if (not os.path.exists(args.resume)) and isfile(args.pretrained_checkpoint):
-    #     print(f"Loading pretrained checkpoint from {args.pretrained_checkpoint}")
-    #     #Load the pretrained checkpoint of the original MedSAM model:
-    #     medsam_lite_checkpoint = torch.load(args.pretrained_checkpoint, map_location="cpu")
-    #     medsam_lite_state_dict = medsam_lite_checkpoint["model_state_dict"]
+        #medsam_lite_state_dict = medsam_lite_checkpoint["model_state_dict"]
         
-    #     # medsam_lite_mid_fuse_state_dict = {}
-    #     # for key, value in medsam_lite_state_dict.items():
-    #     #     if key.startswith("image_encoder."):
-    #     #         for i in range(len(medsam_lite_model_mid_fuse.image_encoders)):
-    #     #             medsam_lite_mid_fuse_state_dict[f"image_encoders.{i}.{key[14:]}"] = value
-    #     #     else:
-    #     #         medsam_lite_mid_fuse_state_dict[key] = value
+        # medsam_lite_mid_fuse_state_dict = {}
+        # for key, value in medsam_lite_state_dict.items():
+        #     if key.startswith("image_encoder."):
+        #         for i in range(len(medsam_lite_model_mid_fuse.image_encoders)):
+        #             medsam_lite_mid_fuse_state_dict[f"image_encoders.{i}.{key[14:]}"] = value
+        #     else:
+        #         medsam_lite_mid_fuse_state_dict[key] = value
         
-    #     medsam_lite_model_mid_fuse.load_state_dict(medsam_lite_state_dict, strict=False)
+        medsam_lite_model_mid_fuse.load_state_dict(medsam_lite_checkpoint, strict=False)
 
-    #     medsam_lite_model_mid_fuse = medsam_lite_model_mid_fuse.to(device)
+        medsam_lite_model_mid_fuse = medsam_lite_model_mid_fuse.to(device)
 
 
 
@@ -614,10 +516,10 @@ def main_worker(gpu, ngpus_per_node, args):
     data_root = args.tr_npy_path
     data_val = args.val_npy_path
     
-    train_dataset = NchannelNpyDataset(data_root=data_root, data_aug=True)
+    train_dataset = NpyDataset(data_root=data_root, data_aug=True)
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     
-    val_dataset = NchannelNpyDataset(data_root=data_val, data_aug=False)
+    val_dataset = NpyDataset(data_root=data_val, data_aug=False)
     val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset)
     
     val_loader = DataLoader(

@@ -40,6 +40,8 @@ parser.add_argument("-window_width", type=int, default=400,
                     help="CT window width, [default: 400]")
 parser.add_argument("--save_nii", default=True, action="store_true",
                     help="Save the image and ground truth as nii files for sanity check; they can be removed")
+parser.add_argument("--fuse_method", type=str, default="fuse_all_channels",  #fuse_all_channels, repeat_first, combine_rgb, mri_weight_blending_b
+                    help="Save the image and ground truth as nii files for sanity check; they can be removed")
 
 args = parser.parse_args()
 
@@ -112,7 +114,7 @@ class ImageReader:
 def fuse_images(images, method='repeat_first'):
     if method == 'repeat_first':
         return np.stack([images[0], images[0], images[0]], axis=-1)
-    elif method == 'combine_rgb':
+    elif method == 'combine_rgb': 
         return np.stack([images[0], images[1], images[2]], axis=-1)
     elif method == 'mri_weight_blending_b':
         alpha = 0.5  # Weight for the PET image
@@ -143,14 +145,13 @@ def fuse_images(images, method='repeat_first'):
         # Create an empty array to store the fused image
         #fused_image = np.zeros((*images[0].shape[:-1], max_channels))
         fused_image = np.zeros((*images[0].shape, max_channels))
+        
         # Iterate over each channel and assign the corresponding image
         for i in range(max_channels):
-            if i < len(images):
-                fused_image[..., i] = images[i]
-            else:
-                # If there are fewer images than channels, repeat the last image
-                fused_image[..., i] = images[-1]
-                return fused_image
+           # if i < (len(images)-1):
+            fused_image[..., i] = images[i]
+            
+        return fused_image
     else:
         raise ValueError("Unsupported fusion method.")
 
@@ -213,7 +214,6 @@ def preprocess(name, npy_path):
     reader = ImageReader(nii_path, ['CT', 'PET',  'T1', 'T2'])
     reader.read_images(name)
     
-
     
     if len(z_index) > 0:
         # crop the ground truth with non-zero slices
@@ -259,7 +259,7 @@ def preprocess(name, npy_path):
         
         img_list = [preprocess_img(reader.get_image_data(modality),modality) for modality in reader.modalities]
 
-        fused_image = fuse_images(img_list, method = 'fuse_all_channels') #fuse_all_channels , 'mri_weight_blending_b'
+        fused_image = fuse_images(img_list, method = args.fuse_method) #fuse_all_channels , 'mri_weight_blending_b'
         #print(fused_image.shape)
         
         fused_image = np.uint8(fused_image)
