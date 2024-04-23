@@ -33,21 +33,21 @@ export NCCL_DEBUG=INFO
 dataroot="/mnt/processing/jintao/medsam_hnc/npy/HNC_midfuse/trains"
 dataval="/mnt/processing/jintao/medsam_hnc/npy/HNC_midfuse/vals"
 pretrained_checkpoint="./work_dir/LiteMedSAM/lite_medsam.pth"
-#resume="/home/jintao/gitlab/MedSAM_multimodality_HNC_GTV_segmentation/work_dir/LiteMedSAM/"
-CUDA_VISIBLE_DEVICES=2,3 python train_midfuse_multi_gpus_with_val.py \
+resume="/home/jintao/gitlab/MedSAM_multimodality_HNC_GTV_segmentation/work_dir/LiteMedSAM/"
+CUDA_VISIBLE_DEVICES=0,1 python train_midfuse_multi_gpus_with_val.py \
     -i ${dataroot} \
     -val ${dataval} \
     -task_name MedSAM-Lite-hnc-midfuse \
     -pretrained_checkpoint ${pretrained_checkpoint} \
     -work_dir ./work_dir/LiteMedSAM \
     -num_epochs 30 \
-    -batch_size 4 \
+    -batch_size 2 \
     -num_workers 4 \
     -lr 0.0003 \
     --data_aug \
     -world_size ${WORLD_SIZE} \
     -node_rank ${NODE_RANK} \
     -init_method tcp://${MASTER_ADDR}:${MASTER_PORT} 
-    #-resume ${resume}
+    -resume ${resume}
 
 echo "END TIME: $(date)"

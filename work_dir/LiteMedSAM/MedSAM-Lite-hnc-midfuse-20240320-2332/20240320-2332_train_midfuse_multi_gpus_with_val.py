@@ -71,7 +71,8 @@ def get_args():
     return args
 
 
-def show_mask(mask, ax, random_color=False):
+def show_mask(mask, ax, random_color=True):
+    #print()
     if random_color:
         color = np.concatenate([np.random.random(3), np.array([0.45])], axis=0)
     else:
@@ -225,7 +226,7 @@ class NchannelNpyDataset(Dataset):
         img_processed_list = []
         
         #get a random number to check if need to augment data
-        random_value = random.random()
+        random_value = 0
         
         for c in range(img_4c.shape[2]):
             single_channel_img = img_4c[:, :, c]
@@ -449,20 +450,12 @@ class MedSAM_Lite_Midfuse(nn.Module):
         image_embedding = self.image_encoder(images)  # (B*N, 256, 64, 64)
 
         # Reshape the output embedding back to the original shape
-        image_embedding = image_embedding.view(B, N, -1, image_embedding.size(-2), image_embedding.size(-1))  # (B, N, 256, 64, 64)
+        #image_embedding = image_embedding.view(B, N, -1, image_embedding.size(-2), image_embedding.size(-1))  # (B, N, 256, 64, 64)
+        image_embedding = image_embedding.view(B, N, 256, image_embedding.size(-2), image_embedding.size(-1))  # (B, N, 256, 64, 64)
 
         # Fuse the embeddings along the modality dimension
-        fused_image_embedding = image_embedding.mean(dim=1)  # (B, 256, 64, 64)
-            
-        # image_embeddings = []
-        # # fuse embeddings from multiple encoders
-        # for i in range(images.size()[-1]):
-        #     image = images[...,i]
-        #     image_embedding = self.image_encoder(image)  # (B, 256, 64, 64)
-        #     image_embeddings.append(image_embedding)
-        # fused_image_embedding = torch.stack(image_embeddings, dim=1).mean(dim=1)  # (B, 256, 64, 64)
-        
-        
+        fused_image_embedding = image_embedding.mean(dim=1)  
+
         sparse_embeddings, dense_embeddings = self.prompt_encoder(
             points=None,
             boxes=boxes,
