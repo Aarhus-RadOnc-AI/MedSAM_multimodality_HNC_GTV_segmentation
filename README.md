@@ -2,6 +2,9 @@
 
 This is a work based on the LiteMedSAM model (https://github.com/bowang-lab/MedSAM/tree/LiteMedSAM). 
 
+Below is a demo for CT-only head and neck region tumor and organ segmentation with bounding box. 
+![](CT_demo2.mp4)
+
 ## Installation
 
 The codebase is tested with: `Ubuntu 20.04` | Python `3.10` | `CUDA 11.8` | `Pytorch 2.1.2`
