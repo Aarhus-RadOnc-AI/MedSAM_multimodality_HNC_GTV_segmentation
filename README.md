@@ -4,9 +4,8 @@ This is a work based on the LiteMedSAM model (https://github.com/bowang-lab/MedS
 
 Below is a demo for CT-only head and neck region tumor and organ segmentation with bounding box. 
 
-<video width="" height="" controls>
-  <source src="CT_demo2.mp4" type="video/mp4">
-</video>
+[Watch the video](CT_demo2.mp4)
+
 
 ## Installation
 
@@ -16,3 +15,10 @@ The codebase is tested with: `Ubuntu 20.04` | Python `3.10` | `CUDA 11.8` | `Pyt
 3. `git clone https://github.com/Aarhus-RadOnc-AI/MedSAM_multimodality_HNC_GTV_segmentation`
 4. Run `pip install -e .` to install.
 
+```
+@article{ren2024segment,
+  title={Segment anything model for head and neck tumor segmentation with CT, PET and MRI multi-modality images},
+  author={Ren, Jintao and Rasmussen, Mathis and Nijkamp, Jasper and Eriksen, Jesper Grau and Korreman, Stine},
+  journal={arXiv preprint arXiv:2402.17454},
+  year={2024}
+}```
