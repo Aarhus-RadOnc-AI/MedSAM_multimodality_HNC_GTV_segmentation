@@ -4,7 +4,7 @@ This is a work based on the LiteMedSAM model (https://github.com/bowang-lab/MedS
 
 Below is a demo for CT-only head and neck region tumor and organ segmentation with bounding box. 
 
-<video width="320" height="240" controls>
+<video width="" height="" controls>
   <source src="CT_demo2.mp4" type="video/mp4">
 </video>
 
